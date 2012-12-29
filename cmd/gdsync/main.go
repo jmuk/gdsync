@@ -9,21 +9,11 @@ import (
 	"net/http"
 	"time"
 	"github.com/mukai/gdsync"
-	"code.google.com/p/google-api-go-client/drive/v2"
 	"code.google.com/p/goauth2/oauth"
 )
 
 // Settings for authorization.
-var config = &oauth.Config{
-	ClientId:     "951649296996.apps.googleusercontent.com",
-	ClientSecret: "Sa2IG-pAo0hBzquJfbc5aew-",
-	Scope:        drive.DriveScope,
-	RedirectURL:  "urn:ietf:wg:oauth:2.0:oob",
-	AuthURL:      "https://accounts.google.com/o/oauth2/auth",
-	TokenURL:     "https://accounts.google.com/o/oauth2/token",
-	// AccessType should be offline if you want to save the token and reuse it in the future.
-	// AccessType:   "offline",
-}
+var config = gdsync.GetAuthConfig("951649296996.apps.googleusercontent.com", "Sa2IG-pAo0hBzquJfbc5aew-")
 
 var authfile string
 var verbose bool
@@ -114,13 +104,12 @@ func main() {
 	t := initAuthToken()
 
 	// Create a new authorized Drive client.
-	svc, err := drive.New(t.Client())
+	syncer, err := gdsync.NewGDSyncer(t)
 	if err != nil {
 		fmt.Printf("Cannot start drive service: %v\n", err)
 		return
 	}
 
-	syncer := gdsync.NewGDSyncer(svc, t)
 	syncer.SetErrorLogger(log.New(os.Stderr, "", 0))
 	if verbose {
 		syncer.SetLogger(log.New(os.Stdout, "", 0))

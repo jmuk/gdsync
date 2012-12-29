@@ -12,13 +12,6 @@ import (
 	"code.google.com/p/goauth2/oauth"
 )
 
-type GDSyncer struct {
-	svc *drive.Service
-	transport *oauth.Transport
-	msg *log.Logger
-	err *log.Logger
-}
-
 type nullWriter struct {
 }
 
@@ -30,13 +23,38 @@ func nullLogger() *log.Logger {
 	return log.New(&nullWriter{}, "", 0)
 }
 
-func NewGDSyncer(svc *drive.Service, t *oauth.Transport) *GDSyncer {
+func GetAuthConfig(clientId, clientSecret string) *oauth.Config {
+	return &oauth.Config {
+		ClientId: clientId,
+		ClientSecret: clientSecret,
+		Scope:        drive.DriveScope,
+		RedirectURL:  "urn:ietf:wg:oauth:2.0:oob",
+		AuthURL:      "https://accounts.google.com/o/oauth2/auth",
+		TokenURL:     "https://accounts.google.com/o/oauth2/token",
+		// AccessType should be offline if you want to save the token and reuse it in the future.
+		// AccessType:   "offline",
+	}
+}
+
+type GDSyncer struct {
+	svc *drive.Service
+	transport *oauth.Transport
+	msg *log.Logger
+	err *log.Logger
+}
+
+func NewGDSyncer(t *oauth.Transport) (*GDSyncer, error) {
+	service, err := drive.New(t.Client())
+	if err != nil {
+		return nil, err
+	}
+
 	return &GDSyncer{
-		svc: svc,
+		svc: service,
 		transport: t,
 		msg: nullLogger(),
 		err: nullLogger(),
-	}
+	}, nil
 }
 
 func (s *GDSyncer) SetLogger(logger *log.Logger) {
