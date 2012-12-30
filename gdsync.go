@@ -31,8 +31,6 @@ func GetAuthConfig(clientId, clientSecret string) *oauth.Config {
 		RedirectURL:  "urn:ietf:wg:oauth:2.0:oob",
 		AuthURL:      "https://accounts.google.com/o/oauth2/auth",
 		TokenURL:     "https://accounts.google.com/o/oauth2/token",
-		// AccessType should be offline if you want to save the token and reuse it in the future.
-		// AccessType:   "offline",
 	}
 }
 
@@ -65,8 +63,12 @@ func (s *GDSyncer) SetErrorLogger(logger *log.Logger) {
 	s.err = logger
 }
 
+func buildQuery(name string) string {
+	return "title='" + strings.Replace(name, "'", "\\'", -1) + "'"
+}
+
 func (s *GDSyncer) getToplevelEntry(name string) (*drive.File, error) {
-	flist, err := s.svc.Files.List().Do()
+	flist, err := s.svc.Files.List().Q(buildQuery(name)).Do()
 	if err != nil {
 		s.err.Printf("Cannot get the file list: %v\n", err)
 		return nil, err
@@ -94,7 +96,7 @@ func (s *GDSyncer) getEntry(file *drive.File, paths []string) (*drive.File, erro
 		return file, nil
 	}
 
-	clist, err := s.svc.Children.List(file.Id).Do()
+	clist, err := s.svc.Children.List(file.Id).Q(buildQuery(paths[0])).Do()
 	for {
 		if err != nil {
 			s.err.Printf("Failed to get the child list: %v\n", err)
