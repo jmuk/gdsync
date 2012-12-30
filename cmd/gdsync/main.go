@@ -1,22 +1,24 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"flag"
 	"log"
 	"os"
+	"path"
 	"github.com/mukai/gdsync"
 	"github.com/gcmurphy/getpass"
 )
 
-// Settings for authorization.
-var config = gdsync.GetAuthConfig("951649296996.apps.googleusercontent.com", "Sa2IG-pAo0hBzquJfbc5aew-")
-
+var clientSettings string
 var authfile string
 var passphrase string
 var verbose bool
 
 func initFlags() {
+	client_default := path.Join(os.Getenv("HOME"), ".gdsync_client")
+	flag.StringVar(&clientSettings, "client", client_default, "The file name to store the oauth clients in JSON.")
 	flag.StringVar(&authfile, "authfile", "", "Store/restore the oauth authentication information")
 	flag.StringVar(&passphrase, "P", "\000", "The passphrase to store authfile")
 	flag.BoolVar(&verbose, "v", false, "Verbose output")
@@ -36,6 +38,25 @@ func main() {
 
 	src := flag.Arg(0)
 	dst := flag.Arg(1)
+
+	client_file, err := os.Open(clientSettings)
+	if err != nil {
+		fmt.Printf("Failed to load the client settings: %v\n", err)
+		return
+	}
+	var clientData map[string]string
+	if err := json.NewDecoder(client_file).Decode(&clientData); err != nil {
+		fmt.Printf("Failed to parse the client settings: %v\n", err)
+		return
+	}
+	clientId, id_ok := clientData["ClientId"]
+	clientSecret, secret_ok := clientData["ClientSecret"]
+	if !id_ok || !secret_ok {
+		fmt.Printf("Cannot find value for ClientId or ClientSecret")
+		return
+	}
+	config := gdsync.GetAuthConfig(clientId, clientSecret)
+	
 
 	if authfile != "" && passphrase == "\000" {
 		var err error
