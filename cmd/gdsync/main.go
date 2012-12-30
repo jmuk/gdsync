@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
-	"github.com/mukai/gdsync"
+	"github.com/jmuk/gdsync"
 	"github.com/gcmurphy/getpass"
 )
 
