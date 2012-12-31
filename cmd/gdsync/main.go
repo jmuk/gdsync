@@ -19,6 +19,7 @@ var clientSettings string
 var authfile string
 var passphrase string
 var verbose bool
+var doDelete bool
 
 func initFlags() {
 	client_default := path.Join(os.Getenv("HOME"), ".gdsync_client")
@@ -28,6 +29,7 @@ func initFlags() {
 	flag.BoolVar(&verbose, "v", false, "Verbose output")
 	flag.StringVar(&exclude, "exclude", "", "Specify the exclude pattern")
 	flag.StringVar(&excludeFrom, "exclude-from", "", "Specify the file of exclude patterns")
+	flag.BoolVar(&doDelete, "delete", false, "delete missing files if specified")
 	flag.Parse()
 }
 
@@ -110,6 +112,10 @@ func main() {
 		} else {
 			fmt.Printf("Cannot read the file %s: %v\n", excludeFrom, err)
 		}
+	}
+
+	if doDelete {
+		syncer.DoDelete()
 	}
 
 	syncer.DoSync(src, dst)

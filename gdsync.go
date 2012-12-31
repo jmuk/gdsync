@@ -40,6 +40,7 @@ type GDSyncer struct {
 	msg *log.Logger
 	err *log.Logger
 	exclude_patterns []string
+	doDelete bool 
 }
 
 func NewGDSyncer(t *oauth.Transport) (*GDSyncer, error) {
@@ -53,6 +54,7 @@ func NewGDSyncer(t *oauth.Transport) (*GDSyncer, error) {
 		transport: t,
 		msg: nullLogger(),
 		err: nullLogger(),
+		doDelete: false,
 	}, nil
 }
 
@@ -62,6 +64,10 @@ func (s *GDSyncer) SetLogger(logger *log.Logger) {
 
 func (s *GDSyncer) SetErrorLogger(logger *log.Logger) {
 	s.err = logger
+}
+
+func (s *GDSyncer) DoDelete() {
+	s.doDelete = true
 }
 
 func (s *GDSyncer) AddExcludePattern(pattern string) {
@@ -164,9 +170,17 @@ func (s *GDSyncer) downloadFilesTo(file *drive.File, dst string) {
 		}
 	}
 	if file.MimeType == "application/vnd.google-apps.folder" {
-		s.msg.Printf("Syncing %v\n", file.Title)
+		s.msg.Printf("Syncing %v\n", dstfile)
+		local_files := make(map[string]bool)
 		if err != nil {
 			os.Mkdir(dstfile, 0777)
+		} else {
+			dsthandle, _ := os.Open(dstfile)
+			names, _ := dsthandle.Readdirnames(0)
+			for _, name := range names {
+				local_files[name] = true
+			}
+			dsthandle.Close()
 		}
 		clist, err := s.svc.Children.List(file.Id).Do()
 		for {
@@ -180,6 +194,7 @@ func (s *GDSyncer) downloadFilesTo(file *drive.File, dst string) {
 					s.err.Printf("Cannot get the file info: %v\n", err)
 					continue
 				}
+				delete(local_files, cfile.Title)
 				s.downloadFilesTo(cfile, dstfile)
 			}
 			if clist.NextPageToken == "" {
@@ -188,8 +203,18 @@ func (s *GDSyncer) downloadFilesTo(file *drive.File, dst string) {
 				clist, err = s.svc.Children.List(file.Id).PageToken(clist.NextPageToken).Do()
 			}
 		}
+		if s.doDelete {
+			for name, _ := range local_files {
+				// Do not delete files of excluded pattern!!
+				if s.ShouldExcludeName(name) {
+					continue
+				}
+				full_path := filepath.Join(dstfile, name)
+				s.msg.Printf("deleting %s", full_path)
+				os.Remove(full_path)
+			}
+		}
 	} else if file.DownloadUrl != "" {
-		s.msg.Printf("Download %v\n", file.Title)
 		dsthandle, err := os.Create(dstfile)
 		defer dsthandle.Close()
 		if err != nil {
@@ -209,6 +234,7 @@ func (s *GDSyncer) downloadFilesTo(file *drive.File, dst string) {
 		}
 		io.Copy(dsthandle, resp.Body)
 		dsthandle.Sync()
+		s.msg.Printf("Downloaded %v\n", dstfile)
 		os.Chtimes(dstfile, srcmtime, srcmtime)
 	} else {
 		s.err.Printf("Cannot download file: %v\n", file)
@@ -294,13 +320,15 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 	}
 
 	for _, name := range names {
+		full_path := filepath.Join(basedir, name)
 		if s.ShouldExcludeName(name) {
-			s.msg.Printf("Skipping: %s\n", name)
+			s.msg.Printf("Skipping: %s\n", full_path)
+			delete(drivefiles, name)
 			continue
 		}
-		file, err := os.Open(filepath.Join(basedir, name))
+		file, err := os.Open(full_path)
 		if err != nil {
-			s.err.Printf("Cannot open the directory: %v\n", name)
+			s.err.Printf("Cannot open the file: %v\n", full_path)
 			continue
 		}
 		each_finfo, err := file.Stat()
@@ -312,9 +340,10 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 		var updateId string
 		if drivefiles[name] != nil {
 			drivefile := drivefiles[name] 
+			delete(drivefiles, name)
 			mtime, err := time.Parse(time.RFC3339, drivefile.ModifiedDate)
 			if err == nil && (each_mtime.Equal(mtime) || each_mtime.Before(mtime)) {
-				s.msg.Printf("Skipping: %s\n", name)
+				s.msg.Printf("Skipping: %s\n", full_path)
 				continue
 			}
 			updateId = drivefile.Id
@@ -336,7 +365,7 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 			}
 			result, err = call.Do()
 			if err != nil {
-				s.err.Printf("Failed to update: %v\n", err)
+				s.err.Printf("Failed to update %s: %v\n", full_path, err)
 				continue
 			}
 		} else {
@@ -346,7 +375,7 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 			}
 			result, err = call.Do()
 			if err != nil {
-				s.err.Printf("Failed to insert: %v\n", err)
+				s.err.Printf("Failed to insert %s: %v\n", full_path, err)
 				continue
 			}
 		}
@@ -355,10 +384,16 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 			newParent := &drive.ParentReference{
 				Id: result.Id,
 			}
-			s.err.Printf("Syncing %s\n", name)
-			s.uploadFilesTo(filepath.Join(basedir, name), newParent)
+			s.err.Printf("Syncing %s\n", full_path)
+			s.uploadFilesTo(full_path, newParent)
 		} else {
-			s.err.Printf("Uploaded: %s\n", name)
+			s.err.Printf("Uploaded: %s\n", full_path)
+		}
+	}
+	if s.doDelete {
+		for name, file := range drivefiles {
+			s.msg.Printf("deleting file: %s\n", filepath.Join(basedir, name))
+			s.svc.Files.Delete(file.Id).Do()
 		}
 	}
 }
