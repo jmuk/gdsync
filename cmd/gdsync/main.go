@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"flag"
@@ -11,6 +12,8 @@ import (
 	"github.com/gcmurphy/getpass"
 )
 
+var exclude string
+var excludeFrom string
 var clientSettings string
 var authfile string
 var passphrase string
@@ -22,6 +25,8 @@ func initFlags() {
 	flag.StringVar(&authfile, "authfile", "", "Store/restore the oauth authentication information")
 	flag.StringVar(&passphrase, "P", "\000", "The passphrase to store authfile")
 	flag.BoolVar(&verbose, "v", false, "Verbose output")
+	flag.StringVar(&exclude, "exclude", "", "Specify the exclude pattern")
+	flag.StringVar(&excludeFrom, "exclude-from", "", "Specify the file of exclude patterns")
 	flag.Parse()
 }
 
@@ -44,6 +49,7 @@ func main() {
 		fmt.Printf("Failed to load the client settings: %v\n", err)
 		return
 	}
+	defer client_file.Close()
 	var clientData map[string]string
 	if err := json.NewDecoder(client_file).Decode(&clientData); err != nil {
 		fmt.Printf("Failed to parse the client settings: %v\n", err)
@@ -83,6 +89,26 @@ func main() {
 	syncer.SetErrorLogger(log.New(os.Stderr, "", 0))
 	if verbose {
 		syncer.SetLogger(log.New(os.Stdout, "", 0))
+	}
+
+	if exclude != "" {
+		syncer.AddExcludePattern(exclude)
+	}
+	if excludeFrom != "" {
+		if exclude_file, err := os.Open(excludeFrom); err == nil {
+			fmt.Printf("reading from %s...\n", excludeFrom)
+			bufreader := bufio.NewReader(exclude_file)
+			for {
+				if pattern, err := bufreader.ReadString('\n'); err == nil {
+					syncer.AddExcludePattern(pattern)
+				} else {
+					syncer.AddExcludePattern(pattern)
+					break
+				}
+			}
+		} else {
+			fmt.Printf("Cannot read the file %s: %v\n", excludeFrom, err)
+		}
 	}
 
 	syncer.DoSync(src, dst)

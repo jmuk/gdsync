@@ -39,6 +39,7 @@ type GDSyncer struct {
 	transport *oauth.Transport
 	msg *log.Logger
 	err *log.Logger
+	exclude_patterns []string
 }
 
 func NewGDSyncer(t *oauth.Transport) (*GDSyncer, error) {
@@ -61,6 +62,22 @@ func (s *GDSyncer) SetLogger(logger *log.Logger) {
 
 func (s *GDSyncer) SetErrorLogger(logger *log.Logger) {
 	s.err = logger
+}
+
+func (s *GDSyncer) AddExcludePattern(pattern string) {
+	if pattern != "" {
+		s.exclude_patterns = append(s.exclude_patterns, pattern)
+	}
+}
+
+func (s *GDSyncer) ShouldExcludeName(name string) bool {
+	// TODO: allow directory pattern ("dir/fpat.*"-style patterns)
+	for _, pattern := range s.exclude_patterns {
+		if ok, _ := filepath.Match(pattern, name); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func buildQuery(name string) string {
@@ -122,6 +139,11 @@ func (s *GDSyncer) getEntry(file *drive.File, paths []string) (*drive.File, erro
 }
 
 func (s *GDSyncer) downloadFilesTo(file *drive.File, dst string) {
+	if s.ShouldExcludeName(file.Title) {
+		s.msg.Printf("Skipping: %s\n", file.Title)
+		return
+	}
+
 	dstfile := filepath.Join(dst, file.Title)
 	srcmtime, err := time.Parse(time.RFC3339, file.ModifiedDate)
 	if err != nil {
@@ -229,6 +251,12 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 		s.err.Printf("Cannot open the file: %s\n", src)
 		return
 	}
+
+	if _, name := filepath.Split(src); s.ShouldExcludeName(name) {
+		s.msg.Printf("Skipping: %s", src)
+		return
+	}
+
 	var basedir string
 	var names []string
 	if finfo.IsDir() {
@@ -286,7 +314,7 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 			drivefile := drivefiles[name] 
 			mtime, err := time.Parse(time.RFC3339, drivefile.ModifiedDate)
 			if err == nil && (each_mtime.Equal(mtime) || each_mtime.Before(mtime)) {
-				s.msg.Printf("Skipping %s\n", name)
+				s.msg.Printf("Skipping: %s\n", name)
 				continue
 			}
 			updateId = drivefile.Id
@@ -338,11 +366,12 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 func (s *GDSyncer) DoSync(src string, dst string) {
 	if strings.HasPrefix(src, "drive:") {
 		s.msg.Printf("Downloading files...")
-		if src[6:] == "" {
+		src = src[6:]
+		if src == "" {
 			s.err.Printf("Do not sync the drive root.")
 			return
 		}
-		paths := filepath.SplitList(src[6:])
+		paths := filepath.SplitList(src)
 		file, err := s.getToplevelEntry(paths[0])
 		if err != nil {
 			return
