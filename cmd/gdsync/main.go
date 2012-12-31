@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 	"github.com/jmuk/gdsync"
 	"github.com/gcmurphy/getpass"
 )
@@ -100,9 +101,9 @@ func main() {
 			bufreader := bufio.NewReader(exclude_file)
 			for {
 				if pattern, err := bufreader.ReadString('\n'); err == nil {
-					syncer.AddExcludePattern(pattern)
+					syncer.AddExcludePattern(strings.TrimSpace(pattern))
 				} else {
-					syncer.AddExcludePattern(pattern)
+					syncer.AddExcludePattern(strings.TrimSpace(pattern))
 					break
 				}
 			}

@@ -67,6 +67,7 @@ func (s *GDSyncer) SetErrorLogger(logger *log.Logger) {
 func (s *GDSyncer) AddExcludePattern(pattern string) {
 	if pattern != "" {
 		s.exclude_patterns = append(s.exclude_patterns, pattern)
+		s.msg.Printf("Added an exclude pattern: %s\n", pattern)
 	}
 }
 
@@ -216,7 +217,7 @@ func (s *GDSyncer) downloadFilesTo(file *drive.File, dst string) {
 
 func (s *GDSyncer) createDirectoryIfMissing(file *drive.File, name string) (*drive.File, error) {
 	if file != nil {
-		clist, err := s.svc.Children.List(file.Id).Do()
+		clist, err := s.svc.Children.List(file.Id).Q(buildQuery(name)).Do()
 		if err != nil {
 			s.err.Printf("Cannot get the list: %v\n", clist)
 		}
@@ -249,11 +250,6 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 	finfo, err := os.Stat(src)
 	if err != nil {
 		s.err.Printf("Cannot open the file: %s\n", src)
-		return
-	}
-
-	if _, name := filepath.Split(src); s.ShouldExcludeName(name) {
-		s.msg.Printf("Skipping: %s", src)
 		return
 	}
 
@@ -298,6 +294,10 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 	}
 
 	for _, name := range names {
+		if s.ShouldExcludeName(name) {
+			s.msg.Printf("Skipping: %s\n", name)
+			continue
+		}
 		file, err := os.Open(filepath.Join(basedir, name))
 		if err != nil {
 			s.err.Printf("Cannot open the directory: %v\n", name)
@@ -384,10 +384,12 @@ func (s *GDSyncer) DoSync(src string, dst string) {
 	} else if strings.HasPrefix(dst, "drive:") {
 		s.msg.Printf("Uploading files...")
 		dst = dst[6:]
-		var parent *drive.ParentReference
+		_, src_base := filepath.Split(src)
+		var file *drive.File
+		var err error
 		if dst != "" {
 			paths := filepath.SplitList(dst)
-			file, err := s.getToplevelEntry(paths[0])
+			file, err = s.getToplevelEntry(paths[0])
 			if err == os.ErrNotExist && len(paths) == 1 {
 				file, err = s.createDirectoryIfMissing(nil, paths[0])
 				if err != nil {
@@ -412,11 +414,19 @@ func (s *GDSyncer) DoSync(src string, dst string) {
 				s.err.Printf("target is not a folder")
 				return
 			}
-			parent = &drive.ParentReference {
-				Id: file.Id,
+			file, err = s.createDirectoryIfMissing(file, src_base)
+		} else {
+			file, err = s.getToplevelEntry(src_base)
+			if err == os.ErrNotExist {
+				file, err = s.createDirectoryIfMissing(nil, src_base)
+				if err != nil {
+					s.err.Printf("Cannot create the directory: %v\n", err)
+					return
+				}
 			}
 		}
-		s.uploadFilesTo(src, parent)
+
+		s.uploadFilesTo(src, &drive.ParentReference{Id: file.Id,})
 	} else {
 		s.err.Printf("Both source and destination are local. Quitting...\n")
 	}
