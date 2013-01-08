@@ -449,7 +449,9 @@ func (s *GDSyncer) DoSync(src string, dst string) {
 				s.err.Printf("target is not a folder")
 				return
 			}
-			file, err = s.createDirectoryIfMissing(file, src_base)
+			if (src_base != ".") {
+				file, err = s.createDirectoryIfMissing(file, src_base)
+			}
 		} else {
 			file, err = s.getToplevelEntry(src_base)
 			if err == os.ErrNotExist {
