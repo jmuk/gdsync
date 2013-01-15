@@ -3,6 +3,7 @@ package gdsync
 import (
 	"io"
 	"log"
+	"mime"
 	"os"
 	"path/filepath"
 	"net/http"
@@ -353,6 +354,11 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 		}
 		if each_finfo.IsDir() {
 			drivefile.MimeType = "application/vnd.google-apps.folder"
+		} else {
+			drivefile.MimeType = mime.TypeByExtension(filepath.Ext(name))
+			if drivefile.MimeType == "" {
+				drivefile.MimeType = "text/plain"
+			}
 		}
 		if (parent != nil) {
 			drivefile.Parents = []*drive.ParentReference{parent}
