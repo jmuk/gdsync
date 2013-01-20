@@ -20,6 +20,7 @@ var authfile string
 var passphrase string
 var verbose bool
 var doDelete bool
+var useTextPlain bool
 
 func initFlags() {
 	client_default := path.Join(os.Getenv("HOME"), ".gdsync_client")
@@ -30,6 +31,7 @@ func initFlags() {
 	flag.StringVar(&exclude, "exclude", "", "Specify the exclude pattern")
 	flag.StringVar(&excludeFrom, "exclude-from", "", "Specify the file of exclude patterns")
 	flag.BoolVar(&doDelete, "delete", false, "delete missing files if specified")
+	flag.BoolVar(&useTextPlain, "use-text-plain", false, "Use text/plain mime-type for text-like files rather than specific type such like text/html")
 	flag.Parse()
 }
 
@@ -116,6 +118,9 @@ func main() {
 
 	if doDelete {
 		syncer.DoDelete()
+	}
+	if useTextPlain {
+		syncer.UseTextPlain()
 	}
 
 	syncer.DoSync(src, dst)

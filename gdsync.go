@@ -35,13 +35,18 @@ func GetAuthConfig(clientId, clientSecret string) *oauth.Config {
 	}
 }
 
+type gdSyncerOptions struct {
+	excludePatterns []string
+	doDelete bool
+	useTextPlain bool
+}
+
 type GDSyncer struct {
 	svc *drive.Service
 	transport *oauth.Transport
 	msg *log.Logger
 	err *log.Logger
-	exclude_patterns []string
-	doDelete bool 
+	gdSyncerOptions
 }
 
 func NewGDSyncer(t *oauth.Transport) (*GDSyncer, error) {
@@ -55,7 +60,6 @@ func NewGDSyncer(t *oauth.Transport) (*GDSyncer, error) {
 		transport: t,
 		msg: nullLogger(),
 		err: nullLogger(),
-		doDelete: false,
 	}, nil
 }
 
@@ -71,16 +75,20 @@ func (s *GDSyncer) DoDelete() {
 	s.doDelete = true
 }
 
+func (s *GDSyncer) UseTextPlain() {
+	s.useTextPlain = true
+}
+
 func (s *GDSyncer) AddExcludePattern(pattern string) {
 	if pattern != "" {
-		s.exclude_patterns = append(s.exclude_patterns, pattern)
+		s.excludePatterns = append(s.excludePatterns, pattern)
 		s.msg.Printf("Added an exclude pattern: %s\n", pattern)
 	}
 }
 
 func (s *GDSyncer) ShouldExcludeName(name string) bool {
 	// TODO: allow directory pattern ("dir/fpat.*"-style patterns)
-	for _, pattern := range s.exclude_patterns {
+	for _, pattern := range s.excludePatterns {
 		if ok, _ := filepath.Match(pattern, name); ok {
 			return true
 		}
@@ -355,10 +363,11 @@ func (s *GDSyncer) uploadFilesTo(src string, parent *drive.ParentReference) {
 		if each_finfo.IsDir() {
 			drivefile.MimeType = "application/vnd.google-apps.folder"
 		} else {
-			drivefile.MimeType = mime.TypeByExtension(filepath.Ext(name))
-			if drivefile.MimeType == "" {
-				drivefile.MimeType = "text/plain"
+			mimeType := mime.TypeByExtension(filepath.Ext(name))
+			if mimeType == "" || (s.useTextPlain && (strings.HasPrefix(mimeType, "text/") || mimeType == "application/json")) {
+				mimeType = "text/plain"
 			}
+			drivefile.MimeType = mimeType
 		}
 		if (parent != nil) {
 			drivefile.Parents = []*drive.ParentReference{parent}
